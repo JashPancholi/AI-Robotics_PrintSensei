@@ -13,3 +13,5 @@ generated_labels/
 temporary/
 
 .vscode/
+
+__init__.py
