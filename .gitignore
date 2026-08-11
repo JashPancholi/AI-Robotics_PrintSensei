@@ -1,10 +1,19 @@
 .venv/
+venv/
+
+# JavaScript dependencies and build output
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
 
 __pycache__/
 
 *.pyc
 
 .env
+.env.*
+!.env.example
 
 *.db
 
