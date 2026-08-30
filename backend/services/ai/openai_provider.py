@@ -36,7 +36,7 @@ class OpenAIProvider(AIProvider):
                 {
                     "role": "system",
                     "content":
-                    "You create structured diagram specifications."
+                    "You return valid JSON matching the structure requested by the user."
                 },
 
                 {

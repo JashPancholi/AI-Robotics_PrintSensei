@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
+from app.api import history_router, public_shares_router, shares_router, study_router
 from app.core.fake_request_generator import create_fake_print_request
 from app.models.label_data import LabelData
 from app.renderer import LabelRenderer
@@ -8,6 +9,10 @@ from app.schemas.simulate import SimulateRequest, SimulateResponse
 from shared.config import APP_NAME, APP_VERSION, MODE, HARDWARE_MODE
 
 router = APIRouter()
+router.include_router(study_router)
+router.include_router(history_router)
+router.include_router(shares_router)
+router.include_router(public_shares_router)
 
 
 @router.get("/", response_class=HTMLResponse)

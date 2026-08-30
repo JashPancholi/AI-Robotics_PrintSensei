@@ -8,8 +8,14 @@ dist/
 frontend/dist/
 
 __pycache__/
-
 *.pyc
+
+# Python test and coverage artifacts
+.pytest_cache/
+pytest-cache-files-*/
+.coverage
+.coverage.*
+htmlcov/
 
 .env
 .env.*
@@ -18,9 +24,19 @@ __pycache__/
 *.db
 
 generated_labels/
+diagram_images/diagram_*.png
+shared_content/
 
 temporary/
 
+# Local logs and process output
+*.log
+*.pid
+
 .vscode/
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
 
 __init__.py

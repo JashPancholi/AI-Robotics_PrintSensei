@@ -14,11 +14,11 @@ class DiagramOptimizer:
 
     DETAIL_LIMITS = {
 
-    "low": 5,
+    "low": 3,
 
-    "medium": 8,
+    "medium": 5,
 
-    "high": 14
+    "high": 6
 
 }
 
@@ -63,7 +63,8 @@ class DiagramOptimizer:
 
             rendering_notes=(
                 "Black and white high contrast. "
-                "Large labels. Minimal details."
+                "Very large labels and thick lines for a 384 pixel wide print. "
+                "Use only short component names; avoid explanatory paragraphs."
             )
         )
 
@@ -115,4 +116,3 @@ class DiagramOptimizer:
 
 
         return filtered
-    
