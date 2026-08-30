@@ -12,6 +12,7 @@
   --led-green: #34d058;
   --led-blue: #58a6ff;
   --led-purple: #9b6dff;
+  --led-red: #f85149;
   --fs-h: 14px;
   --fs-b: 11px;
   --fs-xs: 10px;
@@ -23,7 +24,7 @@
 
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--bg); }
-button, textarea { font: inherit; }
+button, input, textarea { font: inherit; }
 button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 svg { display: block; }
 
@@ -56,8 +57,10 @@ svg { display: block; }
 
 .mode-grid { flex: 1; display: grid; grid-template: 1fr 1fr / 1fr 1fr 1fr; gap: 1px; background: var(--border); }
 .tile-button, .method-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 0; background: var(--surface); transition: background .1s; }
-.tile-button:hover, .method-tile:hover { background: var(--lift); }
+.tile-button:hover:not(:disabled), .method-tile:hover:not(:disabled) { background: var(--lift); }
 .tile-button span { color: var(--text); font-size: var(--fs-b); font-weight: 500; }
+.tile-button small { color: var(--dim); font-size: 8px; }
+.tile-button:disabled, .method-tile:disabled { cursor: default; opacity: .4; }
 .empty-tile { background: var(--bg); }
 .settings-tile span { color: var(--sub); font-weight: 400; }
 
@@ -104,18 +107,28 @@ svg { display: block; }
 .processing-copy span, .printed-copy span { display: block; margin-top: 4px; color: var(--sub); font-size: var(--fs-b); }
 .progress-track { height: 2px; overflow: hidden; border-radius: 1px; background: var(--border); }
 .processing-progress { width: 160px; }
-.fill-anim { width: 0; height: 100%; border-radius: 1px; background: var(--led-purple); animation: fill 2.4s linear forwards; }
+.actual-progress { height: 100%; border-radius: 1px; background: var(--led-purple); transition: width .25s ease-out; }
 
-.preview-body { padding: 12px 14px; }
+.preview-body { min-height: 0; padding: 6px 14px; }
 .label-preview { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); }
+.rendered-preview { padding: 4px 8px; text-align: center; }
+.rendered-preview img { max-width: 100%; max-height: 96px; object-fit: contain; background: #fff; }
 .label-main { display: flex; align-items: flex-start; gap: 10px; }
 .label-copy { flex: 1; }
 .label-title { color: var(--text); font-size: 13px; font-weight: 700; line-height: 1.2; letter-spacing: -.02em; }
 .label-desc { margin-top: 5px; color: var(--sub); font-size: var(--fs-xs); line-height: 1.5; }
 .qr-box { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border: 1px solid var(--border); background: var(--lift); }
 .label-footer { margin-top: 8px; padding-top: 7px; color: var(--dim); font-size: 9px; letter-spacing: .05em; border-top: 1px solid var(--border); }
-.preview-actions { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--surface); }
+.preview-actions { display: flex; flex: none; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--surface); }
 .preview-actions button { flex: 1; }
+.preview-actions .primary-button:disabled { opacity: .4; }
+.triple-actions button { min-width: 0; padding-right: 7px; padding-left: 7px; }
+.inline-error { max-width: 280px; margin-top: 5px; color: var(--led-red); font-size: 9px; line-height: 1.25; text-align: center; }
+
+.error-body { gap: 18px; padding: 18px; }
+.error-copy { max-width: 250px; color: var(--sub); font-size: var(--fs-b); line-height: 1.5; text-align: center; }
+.error-actions { display: flex; gap: 8px; }
+.error-actions button { min-width: 90px; }
 
 .printing-body { gap: 14px; }
 .printed-copy div { font-weight: 700; }
@@ -131,14 +144,17 @@ svg { display: block; }
 .brightness > div:first-child { margin-bottom: 8px; display: flex; justify-content: space-between; }
 .brightness span { color: var(--text); font-size: var(--fs-b); font-weight: 500; }
 .brightness small { color: var(--sub); font-size: var(--fs-xs); }
-.brightness-track { position: relative; height: 3px; border-radius: 2px; background: var(--border); }
-.brightness-fill { width: 80%; height: 100%; border-radius: 2px; background: var(--accent); }
-.brightness-track i { position: absolute; left: 80%; top: 50%; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); transform: translate(-50%, -50%); }
+.brightness-slider { width: 100%; height: 14px; margin: 0; appearance: none; cursor: pointer; outline: none; border-radius: 2px; background: linear-gradient(to right, var(--accent) 0 var(--brightness), var(--border) var(--brightness) 100%); }
+.brightness-slider::-webkit-slider-thumb { width: 12px; height: 12px; appearance: none; border: 0; border-radius: 50%; background: var(--accent); }
+.brightness-slider::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--accent); }
+.brightness-slider:focus-visible { outline: 1px solid var(--text); outline-offset: 2px; }
 .about-row > span { flex: 1; }
 .about-row small { color: var(--dim); }
 
 .history-count { margin-left: auto; color: var(--dim); font-size: var(--fs-xs); }
-.history-row { height: 44px; padding: 0 12px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.history-row { width: 100%; height: 44px; padding: 0 12px; display: flex; align-items: center; gap: 10px; color: inherit; text-align: left; border: 0; border-bottom: 1px solid var(--border); background: none; }
+.history-row:hover { background: var(--surface); }
+.history-empty { padding: 28px 16px; color: var(--sub); font-size: var(--fs-b); line-height: 1.5; text-align: center; }
 .history-copy { flex: 1; overflow: hidden; }
 .history-copy div { overflow: hidden; color: var(--text); font-size: var(--fs-b); font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
 .history-copy span { display: block; margin-top: 1px; overflow: hidden; color: var(--sub); font-size: var(--fs-xs); white-space: nowrap; text-overflow: ellipsis; }
@@ -150,11 +166,11 @@ svg { display: block; }
 @keyframes wave { 0%, 100% { transform: scaleY(.25); } 50% { transform: scaleY(1); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 50% { opacity: .5; } }
-@keyframes fill { to { width: 100%; } }
 @keyframes drain { to { width: 0; } }
 .spin { animation: spin 1s linear infinite; }
 .pulse { animation: pulse 2s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-  .spin, .pulse, .fill-anim, .drain-anim, .waveform.wave span { animation-duration: .01ms; animation-iteration-count: 1; }
+  .spin, .pulse, .drain-anim, .waveform.wave span { animation-duration: .01ms; animation-iteration-count: 1; }
+  .actual-progress { transition: none; }
 }
