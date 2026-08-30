@@ -983,4 +983,14 @@ PrintSensei extends existing multimodal AI assistant concepts by introducing aut
 This repository is intended for academic and educational use.
 
 A suitable open-source license will be added as the project progresses.
+
+
+## Additional requirements
+
+1. create a virtual environment in root
+
+2. create a .env file in root
+
+## .env format
+OPENAI_API_KEY=your key here
 >>>>>>> e7dbc32b15474074688995618f207ca5325c39fc
