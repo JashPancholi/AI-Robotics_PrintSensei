@@ -1,4 +1,4 @@
-from backend.perception.vision.service import VisionService
+from backend.services.vision.service import VisionService
 
 
 service = VisionService()
