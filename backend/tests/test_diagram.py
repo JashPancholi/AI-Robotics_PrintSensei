@@ -4,13 +4,21 @@ from backend.core.request import Request
 from backend.engines.diagram.engine import DiagramEngine
 
 
-request = Request(
-    task=TaskType.DIAGRAM,
-    instruction="Create a labeled diagram of a DC Motor."
-)
+def main():
 
-engine = DiagramEngine()
+    request = Request(
+        task=TaskType.DIAGRAM,
+        instruction="Create a labeled diagram of the human heart"
+    )
 
-response = engine.run(request)
+    engine = DiagramEngine()
 
-print(response.model_dump())
+    response = engine.run(request)
+
+    print("\n===== RESULT =====\n")
+
+    print(response.model_dump())
+
+
+if __name__ == "__main__":
+    main()

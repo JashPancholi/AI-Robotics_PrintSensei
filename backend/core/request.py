@@ -15,3 +15,5 @@ class Request(BaseModel):
     image: Optional[Path] = None
 
     input_mode: str = "text"
+
+    detail_level: str = "medium"
