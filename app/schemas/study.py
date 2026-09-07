@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -18,7 +18,10 @@ class StudyGenerateRequest(BaseModel):
         default="medium",
         description="Controls how much study content is generated.",
     )
-
+    image: Optional[str] = Field(
+        default=None,
+        description="Optional file path or base64 data URI of reference image/photo.",
+    )
     @field_validator("text")
     @classmethod
     def text_must_not_be_blank(cls, value: str) -> str:

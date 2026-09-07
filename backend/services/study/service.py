@@ -15,6 +15,7 @@ from backend.engines.diagram.service import DiagramService
 from backend.services.ai.base import AIProvider
 from backend.services.ai.openai_provider import OpenAIProvider
 from backend.services.image.thermal import ThermalImageProcessor
+from backend.services.vision.service import VisionService
 
 
 class StudyServiceError(RuntimeError):
@@ -48,8 +49,13 @@ class GeneratedStudyContent(BaseModel):
 class StudyContentGenerator:
     POINT_LIMITS = {"low": 3, "medium": 5, "high": 8}
 
-    def __init__(self, provider: AIProvider | None = None) -> None:
+    def __init__(
+        self,
+        provider: AIProvider | None = None,
+        vision_service: VisionService | None = None,
+    ) -> None:
         self._provider = provider
+        self._vision_service = vision_service
 
     @property
     def provider(self) -> AIProvider:
@@ -57,13 +63,43 @@ class StudyContentGenerator:
             self._provider = OpenAIProvider()
         return self._provider
 
-    def generate(self, text: str, detail_level: str) -> GeneratedStudyContent:
+    @property
+    def vision_service(self) -> VisionService:
+        if self._vision_service is None:
+            self._vision_service = VisionService()
+        return self._vision_service
+
+    def generate(
+        self,
+        text: str,
+        detail_level: str,
+        image: str | None = None,
+    ) -> GeneratedStudyContent:
         point_limit = self.POINT_LIMITS[detail_level]
+
+        visual_context = ""
+        if image:
+            try:
+                analysis = self.vision_service.analyze(image)
+                extracted_lines: list[str] = []
+                if getattr(analysis, "ocr_text", None):
+                    extracted_lines.append(f"- OCR Text: {analysis.ocr_text}")
+                if getattr(analysis, "components", None):
+                    extracted_lines.append(f"- Visual Components: {analysis.components}")
+                if getattr(analysis, "relationships", None):
+                    extracted_lines.append(f"- Spatial Arrangements: {analysis.relationships}")
+
+                if extracted_lines:
+                    visual_context = "\n\nReference Image Visual Analysis:\n" + "\n".join(extracted_lines)
+            except Exception as exc:
+                visual_context = f"\n\n(Reference image was provided, but vision analysis failed: {exc})"
+
         prompt = f"""
 You create concise study labels for a 58 mm monochrome thermal printer.
 
 User request:
 {text}
+{visual_context}
 
 Return only a JSON object with this shape:
 {{
@@ -127,14 +163,15 @@ class StudyService:
         self,
         text: str,
         detail_level: str,
+        image: str | None = None,
         progress_callback: Callable[[int, str], None] | None = None,
     ) -> StudyGenerationResult:
         report = progress_callback or (lambda progress, stage: None)
         report(5, "Classifying request")
         if self._is_diagram_request(text):
-            return self._generate_diagram(text, detail_level, report)
+            return self._generate_diagram(text, detail_level, image, report)
 
-        return self._generate_notes(text, detail_level, report)
+        return self._generate_notes(text, detail_level, image, report)
 
     @staticmethod
     def _is_diagram_request(text: str) -> bool:
@@ -150,18 +187,20 @@ class StudyService:
         self,
         text: str,
         detail_level: str,
+        image: str | None,
         report: Callable[[int, str], None],
     ) -> StudyGenerationResult:
-        report(15, "Generating study points")
-        content = self.generator.generate(text, detail_level)
+        report(15, "Analyzing image" if image else "Generating study points")
+        content = self.generator.generate(text, detail_level, image=image)
         report(70, "Study content generated")
         label_data = LabelData(
             title=content.title,
             label_type=LabelType.STUDY,
             metadata={
                 "points": content.points,
-                "source": "text",
+                "source": "camera+text" if image else "text",
                 "detail_level": detail_level,
+                "has_image": bool(image),
             },
         )
 
@@ -183,13 +222,15 @@ class StudyService:
         self,
         text: str,
         detail_level: str,
+        image: str | None,
         report: Callable[[int, str], None],
     ) -> StudyGenerationResult:
         request = Request(
             task=TaskType.DIAGRAM,
             instruction=text,
-            input_mode="text",
+            input_mode="camera+text" if image else "text",
             detail_level=detail_level,
+            image=image,
         )
 
         try:

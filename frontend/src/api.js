@@ -44,10 +44,19 @@ function abortableDelay(milliseconds, signal) {
   })
 }
 
-export async function generateStudy(text, detailLevel = 'medium', signal, onProgress) {
+export async function generateStudy(text, detailLevel = 'medium', signal, onProgress, image = null) {
+  const body = {
+    text,
+    detail_level: detailLevel,
+  }
+
+  if (image) {
+    body.image = image
+  }
+
   let job = await request('/api/study/jobs', {
     method: 'POST',
-    body: JSON.stringify({ text, detail_level: detailLevel }),
+    body: JSON.stringify(body),
     signal,
   })
   onProgress?.(job)

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ApiError, createHistoryShare, generateStudy, listHistory, previewUrl, printHistory, printQrShare } from './api.js'
+import CameraCapture from './components/CameraCapture'
 
 const modeNames = { study: 'Study', inventory: 'Inventory', product: 'Product', qr: 'QR Code' }
 const iconStroke = (color = 'var(--dim)') => ({ stroke: color, fill: 'none', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' })
@@ -57,7 +58,7 @@ function IconButton({ onClick, className = '', children, label }) { return <butt
 function Home({ onStart, onSettings, onHistory }) {
   return <div className="screen">
     <Bar>
-      <div className="status-icons"><WifiIcon on /><PrinterIcon on /><CameraIcon /></div>
+      <div className="status-icons"><WifiIcon on /><PrinterIcon on /><CameraIcon on /></div>
       <span className="mono status-copy" />
       <div className="bar-actions"><IconButton label="History" onClick={onHistory}><HistoryIcon /></IconButton><IconButton label="Settings" onClick={onSettings}><SettingsIcon /></IconButton></div>
     </Bar>
@@ -89,7 +90,7 @@ function ModeSelect({ onSelect, onHistory, onBack, onSettings }) {
 
 const methods = [
   { id: 'voice', label: 'Voice', sub: 'Coming soon', Icon: VoiceIcon, available: false },
-  { id: 'camera+voice', label: 'Camera + Voice', sub: 'Coming soon', Icon: CameraVoiceIcon, available: false },
+  { id: 'camera+voice', label: 'Camera', sub: 'Take photo', Icon: CameraVoiceIcon, available: true },
   { id: 'text', label: 'Text', sub: 'Type manually', Icon: TextIcon, available: true },
 ]
 
@@ -99,26 +100,47 @@ function InputMethod({ mode, onSelect, onBack }) {
   </div>
 }
 
-function CameraCapture({ onCaptured, onBack }) {
-  const [captured, setCaptured] = useState(false)
-  const capture = () => { setCaptured(true); window.setTimeout(onCaptured, 700) }
-  return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">Camera</span><span className="step-copy">· step 1 of 2</span><IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton></Bar>
-    <div className="center-body camera-body"><div className="camera-frame"><i className="corner top left" /><i className="corner top right" /><i className="corner bottom left" /><i className="corner bottom right" /><span className={captured ? 'capture-done' : 'camera-prompt'}>{captured ? 'Captured ✓' : 'Aim at subject'}</span></div>
-      <button className={`primary-button capture-button ${captured ? 'is-captured' : ''}`} disabled={captured} onClick={capture}>{captured ? 'Captured' : 'Capture Photo'}</button>
-    </div>
-  </div>
-}
-
-function Capture({ mode, inputMethod, text, onTextChange, onCapture, onBack }) {
+function Capture({ mode, inputMethod, text, onTextChange, onCapture, onBack, attachedImage, onClearImage }) {
   const [recordState, setRecordState] = useState('idle')
-  const isText = inputMethod === 'text'
+  const isText = inputMethod === 'text' || inputMethod === 'camera+voice'
   const finishRecording = () => { if (recordState !== 'holding') return; setRecordState('done'); window.setTimeout(onCapture, 600) }
-  return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">{modeNames[mode]}</span>{inputMethod === 'camera+voice' && <span className="step-copy">· step 2 of 2</span>}<IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton></Bar>
-    {isText ? <div className="center-body text-body"><textarea value={text} maxLength={2000} onChange={(event) => onTextChange(event.target.value)} placeholder="Describe what to study…" /><button className="primary-button continue-button" disabled={!text.trim()} onClick={() => text.trim() && onCapture()}>Continue</button></div>
-      : <div className="center-body voice-body"><div className="voice-visual"><svg width="26" height="30" viewBox="0 0 26 30" fill="none"><rect x="7" y="2" width="12" height="16" rx="6" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" /><path d="M3 15c0 5.5 4.5 9 10 9s10-3.5 10-9" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" /><line x1="13" y1="24" x2="13" y2="29" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" /></svg>
-          <div className={recordState === 'holding' ? 'wave waveform' : 'waveform'}>{[6, 12, 20, 26, 20, 12, 6].map((height, index) => <span key={index} style={{ height: recordState === 'holding' ? height : 4 }} />)}</div></div>
-        <button className={`primary-button record-button ${recordState}`} onPointerDown={() => setRecordState('holding')} onPointerUp={finishRecording} onPointerCancel={finishRecording} onPointerLeave={finishRecording}>{recordState === 'done' ? 'Captured' : recordState === 'holding' ? 'Recording…' : 'Hold to Record'}</button>
-      </div>}
+
+  return <div className="screen">
+    <Bar>
+      <StatusDot color="var(--led-blue)" pulse />
+      <span className="bar-title status-title">{modeNames[mode]}</span>
+      {attachedImage && <span className="step-copy">· Photo Attached</span>}
+      <IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton>
+    </Bar>
+    {isText ? (
+      <div className="center-body text-body">
+        {attachedImage && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', padding: '4px 8px', background: 'var(--surface-subtle)', borderRadius: '6px', width: '100%' }}>
+            <img src={attachedImage.previewUrl} alt="Attached snapshot" style={{ width: '36px', height: '36px', objectFit: 'cover', borderRadius: '4px' }} />
+            <span style={{ fontSize: '11px', flex: 1, color: 'var(--sub)' }}>Photo attached</span>
+            <button type="button" onClick={onClearImage} style={{ background: 'none', border: 'none', color: 'var(--sub)', cursor: 'pointer', fontSize: '14px' }}>✕</button>
+          </div>
+        )}
+        <textarea value={text} maxLength={2000} onChange={(event) => onTextChange(event.target.value)} placeholder="Describe what to study from this topic or photo…" />
+        <button className="primary-button continue-button" disabled={!text.trim()} onClick={() => text.trim() && onCapture()}>Continue</button>
+      </div>
+    ) : (
+      <div className="center-body voice-body">
+        <div className="voice-visual">
+          <svg width="26" height="30" viewBox="0 0 26 30" fill="none">
+            <rect x="7" y="2" width="12" height="16" rx="6" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" />
+            <path d="M3 15c0 5.5 4.5 9 10 9s10-3.5 10-9" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" />
+            <line x1="13" y1="24" x2="13" y2="29" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+          <div className={recordState === 'holding' ? 'wave waveform' : 'waveform'}>
+            {[6, 12, 20, 26, 20, 12, 6].map((height, index) => <span key={index} style={{ height: recordState === 'holding' ? height : 4 }} />)}
+          </div>
+        </div>
+        <button className={`primary-button record-button ${recordState}`} onPointerDown={() => setRecordState('holding')} onPointerUp={finishRecording} onPointerCancel={finishRecording} onPointerLeave={finishRecording}>
+          {recordState === 'done' ? 'Captured' : recordState === 'holding' ? 'Recording…' : 'Hold to Record'}
+        </button>
+      </div>
+    )}
   </div>
 }
 
@@ -145,9 +167,9 @@ function Settings({ onBack, brightness, onBrightnessChange }) {
   const rows = [
     { icon: <WifiIcon on />, label: 'Wi-Fi', value: 'PrintNet_5G' },
     { icon: <PrinterIcon on />, label: 'Printer', value: 'Brother QL-800' },
-    { icon: <CameraIcon on />, label: 'Camera', value: 'Pi Camera v2' },
+    { icon: <CameraIcon on />, label: 'Camera', value: 'USB Webcam' },
   ]
-  return <div className="screen"><Bar><IconButton label="Back" onClick={onBack}><BackIcon /></IconButton><span className="bar-title title-after-back">Settings</span></Bar><div className="settings-list scroll-hidden">{rows.map((row) => <button className="settings-row" key={row.label}>{row.icon}<span>{row.label}</span><small>{row.value}</small><NextIcon /></button>)}<div className="brightness"><div><span>Brightness</span><small>{brightness}%</small></div><input className="brightness-slider" type="range" min="20" max="100" step="5" value={brightness} aria-label="Display brightness" style={{ '--brightness': `${brightness}%` }} onChange={(event) => onBrightnessChange(Number(event.target.value))} /></div><button className="settings-row about-row"><span>About</span><small className="mono">v1.0.0 · RPi 4B</small><NextIcon /></button></div></div>
+  return <div className="screen"><Bar><IconButton label="Back" onClick={onBack}><BackIcon /></IconButton><span className="bar-title title-after-back">Settings</span></Bar><div className="settings-list scroll-hidden">{rows.map((row) => <button className="settings-row" key={row.label}>{row.icon}<span>{row.label}</span><small>{row.value}</small><NextIcon /></button>)}<div className="brightness"><div><span>Brightness</span><small>{brightness}%</small></div><input className="brightness-slider" type="range" min="20" max="100" step="5" value={brightness} aria-label="Display brightness" style={{ '--brightness': `${brightness}%` }} onChange={(event) => onBrightnessChange(Number(event.target.value))} /></div><button className="settings-row about-row"><span>About</span><small className="mono">v1.0.0 · RPi 5</small><NextIcon /></button></div></div>
 }
 
 function History({ items, loading, error, qrMode, onBack, onPreview }) {
@@ -191,6 +213,7 @@ export default function App() {
   const [historyQrMode, setHistoryQrMode] = useState(false)
   const [shareCreating, setShareCreating] = useState(false)
   const [qrShare, setQrShare] = useState(null)
+  const [attachedImage, setAttachedImage] = useState(null) // { previewUrl, filePath, base64 }
   const [qrPrinting, setQrPrinting] = useState(false)
   const [shareError, setShareError] = useState('')
   const [printMessage, setPrintMessage] = useState('Label printed')
@@ -228,6 +251,7 @@ export default function App() {
         'medium',
         controller.signal,
         ({ progress, stage }) => setStudyProgress({ progress, stage }),
+        attachedImage?.filePath || attachedImage?.base64 || null,
       )
       if (controller.signal.aborted) return
       setStudyResult(result)
@@ -239,7 +263,7 @@ export default function App() {
     } finally {
       if (requestController.current === controller) requestController.current = null
     }
-  }, [go, studyText])
+  }, [go, studyText, attachedImage])
 
   const cancelStudy = () => {
     requestController.current?.abort()
@@ -249,8 +273,34 @@ export default function App() {
 
   const exitPreview = () => {
     setStudyText('')
+    setAttachedImage(null)
     setStudyResult(null)
     go('home')
+  }
+
+  const handlePhotoCaptured = async (imageData) => {
+    try {
+      // Post snapshot to the FastAPI /camera/capture endpoint
+      const res = await fetch('http://127.0.0.1:8000/camera/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_data: imageData }),
+      })
+      const data = await res.json()
+      setAttachedImage({
+        previewUrl: imageData,
+        filePath: data.file_path,
+        base64: imageData,
+      })
+    } catch (err) {
+      console.warn('Backend save failed, using memory snapshot:', err)
+      setAttachedImage({
+        previewUrl: imageData,
+        filePath: null,
+        base64: imageData,
+      })
+    }
+    go('capture')
   }
 
   const openHistory = useCallback(async (backScreen = 'home', purpose = 'history') => {
@@ -315,24 +365,51 @@ export default function App() {
     }
   }, [go, qrPrinting, qrShare])
 
-  const selectMethod = (method) => { setInputMethod(method); go(method === 'camera+voice' ? 'camera-capture' : 'capture') }
-  const renderScreen = () => {
-    switch (screen) {
-      case 'mode-select': return <ModeSelect onSelect={(value) => { setMode(value); go('input-method') }} onHistory={(purpose) => openHistory('mode-select', purpose)} onBack={() => go('home')} onSettings={() => go('settings')} />
-      case 'input-method': return <InputMethod mode={mode} onSelect={selectMethod} onBack={() => go('mode-select')} />
-      case 'camera-capture': return <CameraCapture onCaptured={() => go('capture')} onBack={() => go('input-method')} />
-      case 'capture': return <Capture mode={mode} inputMethod={inputMethod} text={studyText} onTextChange={setStudyText} onCapture={submitStudy} onBack={() => go('input-method')} />
-      case 'processing': return <Processing onCancel={cancelStudy} progress={studyProgress.progress} stage={studyProgress.stage} />
-      case 'preview': return studyResult ? <Preview mode={mode} result={studyResult} onEdit={() => go('capture')} onClose={exitPreview} /> : <Home onStart={() => go('mode-select')} onSettings={() => go('settings')} onHistory={() => openHistory('home')} />
-      case 'request-error': return <RequestError message={requestError} onRetry={submitStudy} onBack={() => go('capture')} />
-      case 'printing': return <Printing message={printMessage} onDone={() => go('home')} />
-      case 'settings': return <Settings brightness={brightness} onBrightnessChange={setBrightness} onBack={() => go('home')} />
-      case 'history': return <History items={historyItems} loading={historyLoading} error={historyError} qrMode={historyQrMode} onBack={() => go(historyBackScreen)} onPreview={(item) => { setSelectedHistory(item); setShareError(''); go('history-preview') }} />
-      case 'history-preview': return selectedHistory ? <HistoryPreview item={selectedHistory} error={shareError} onBack={() => go('history')} onPrint={printSelectedHistory} onCreateQr={createSelectedShare} busy={historyPrinting || shareCreating} /> : <History items={historyItems} loading={historyLoading} error={historyError} qrMode={historyQrMode} onBack={() => go(historyBackScreen)} onPreview={(item) => { setSelectedHistory(item); setShareError(''); go('history-preview') }} />
-      case 'qr-preview': return qrShare ? <QrPreview share={qrShare} printing={qrPrinting} onBack={() => go('history-preview')} onClose={() => go('home')} onPrint={printSelectedQr} /> : <History items={historyItems} loading={historyLoading} error={historyError} qrMode={historyQrMode} onBack={() => go(historyBackScreen)} onPreview={(item) => { setSelectedHistory(item); go('history-preview') }} />
-      default: return <Home onStart={() => go('mode-select')} onSettings={() => go('settings')} onHistory={() => openHistory('home')} />
+  const selectMethod = (method) => {
+    setInputMethod(method)
+    if (method === 'camera+voice') {
+      go('camera-capture')
+    } else {
+      go('capture')
     }
   }
 
-  return <main className="lcd-viewport"><div className="lcd-screen" style={{ transform: `scale(${scale})`, filter: `brightness(${brightness}%)` }}>{renderScreen()}</div></main>
+  const renderScreen = () => {
+    switch (screen) {
+      case 'mode-select':
+        return <ModeSelect onSelect={(value) => { setMode(value); go('input-method') }} onHistory={(purpose) => openHistory('mode-select', purpose)} onBack={() => go('home')} onSettings={() => go('settings')} />
+      case 'input-method':
+        return <InputMethod mode={mode} onSelect={selectMethod} onBack={() => go('mode-select')} />
+      case 'camera-capture':
+        return <CameraCapture onCapture={handlePhotoCaptured} onCancel={() => go('input-method')} onBack={() => go('input-method')} />
+      case 'capture':
+        return <Capture mode={mode} inputMethod={inputMethod} text={studyText} onTextChange={setStudyText} onCapture={submitStudy} onBack={() => go('input-method')} attachedImage={attachedImage} onClearImage={() => setAttachedImage(null)} />
+      case 'processing':
+        return <Processing onCancel={cancelStudy} progress={studyProgress.progress} stage={studyProgress.stage} />
+      case 'preview':
+        return studyResult ? <Preview mode={mode} result={studyResult} onEdit={() => go('capture')} onClose={exitPreview} /> : <Home onStart={() => go('mode-select')} onSettings={() => go('settings')} onHistory={() => openHistory('home')} />
+      case 'request-error':
+        return <RequestError message={requestError} onRetry={submitStudy} onBack={() => go('capture')} />
+      case 'printing':
+        return <Printing message={printMessage} onDone={() => go('home')} />
+      case 'settings':
+        return <Settings brightness={brightness} onBrightnessChange={setBrightness} onBack={() => go('home')} />
+      case 'history':
+        return <History items={historyItems} loading={historyLoading} error={historyError} qrMode={historyQrMode} onBack={() => go(historyBackScreen)} onPreview={(item) => { setSelectedHistory(item); setShareError(''); go('history-preview') }} />
+      case 'history-preview':
+        return selectedHistory ? <HistoryPreview item={selectedHistory} error={shareError} onBack={() => go('history')} onPrint={printSelectedHistory} onCreateQr={createSelectedShare} busy={historyPrinting || shareCreating} /> : <History items={historyItems} loading={historyLoading} error={historyError} qrMode={historyQrMode} onBack={() => go(historyBackScreen)} onPreview={(item) => { setSelectedHistory(item); setShareError(''); go('history-preview') }} />
+      case 'qr-preview':
+        return qrShare ? <QrPreview share={qrShare} printing={qrPrinting} onBack={() => go('history-preview')} onClose={() => go('home')} onPrint={printSelectedQr} /> : <History items={historyItems} loading={historyLoading} error={historyError} qrMode={historyQrMode} onBack={() => go(historyBackScreen)} onPreview={(item) => { setSelectedHistory(item); go('history-preview') }} />
+      default:
+        return <Home onStart={() => go('mode-select')} onSettings={() => go('settings')} onHistory={() => openHistory('home')} />
+    }
+  }
+
+  return (
+    <main className="lcd-viewport">
+      <div className="lcd-screen" style={{ transform: `scale(${scale})`, filter: `brightness(${brightness}%)` }}>
+        {renderScreen()}
+      </div>
+    </main>
+  )
 }

@@ -89,7 +89,11 @@ def generate_study_label(
     repository: HistoryRepository = Depends(get_generation_history_repository),
 ) -> StudyGenerateResponse:
     try:
-        result = service.generate(payload.text, payload.detail_level)
+        result = service.generate(
+            payload.text,
+            payload.detail_level,
+            image=payload.image,
+        )
     except StudyServiceError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -110,7 +114,11 @@ def start_study_job(
     background_tasks: BackgroundTasks,
     manager: StudyJobManager = Depends(get_study_job_manager),
 ) -> StudyJobStartResponse:
-    job = manager.create(payload.text, payload.detail_level)
+    job = manager.create(
+        payload.text,
+        payload.detail_level,
+        image=payload.image,
+    )
     background_tasks.add_task(manager.run, job.request_id)
     return StudyJobStartResponse(
         request_id=job.request_id,

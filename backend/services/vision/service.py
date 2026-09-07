@@ -14,39 +14,73 @@ class VisionService:
         self.client = client or OpenAI()
 
     def analyze(self, image_input: Union[str, Path]) -> VisualAnalysis:
-        # 1. Handle file path or raw base64 string
-        if isinstance(image_input, (str, Path)) and Path(image_input).is_file():
-            with open(image_input, "rb") as file:
-                image_data = base64.b64encode(file.read()).decode("utf-8")
-        else:
-            image_data = str(image_input)
+        raw_str = str(image_input).strip()
+        image_b64 = None
+        mime_type = "image/jpeg"
 
-        # 2. Call OpenAI Structured Outputs
+        # Case 1: Browser Data URI (e.g. data:image/png;base64,...)
+        if raw_str.startswith("data:image"):
+            header, _, encoded = raw_str.partition(",")
+            image_b64 = encoded
+            if ":" in header and ";" in header:
+                mime_type = header.split(":", 1)[1].split(";", 1)[0]
+
+        # Case 2: Local file path on disk
+        # Guard with length check (< 4096) to prevent Windows OSError on raw base64 strings
+        elif len(raw_str) < 4096 and (Path(raw_str).is_file() or Path(raw_str).resolve().is_file()):
+            target_path = Path(raw_str) if Path(raw_str).is_file() else Path(raw_str).resolve()
+            suffix = target_path.suffix.lower().lstrip(".")
+            if suffix in ("jpg", "jpeg"):
+                mime_type = "image/jpeg"
+            elif suffix == "png":
+                mime_type = "image/png"
+            elif suffix == "webp":
+                mime_type = "image/webp"
+
+            with open(target_path, "rb") as file:
+                image_b64 = base64.b64encode(file.read()).decode("utf-8")
+
+        # Case 3: Already raw base64
+        else:
+            image_b64 = raw_str
+
+        # Clean trailing whitespace / newlines
+        image_b64 = image_b64.strip()
+
+        # Call OpenAI Structured Outputs with gpt-4o-mini
         response = self.client.beta.chat.completions.parse(
-            model="gpt-4.1-mini",
+            model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You are an expert visual perception model for PrintSensei. "
-                        "Analyze the image and extract OCR text, visual components, "
-                        "their spatial arrangements, and relationships."
-                    )
+                        "You are an expert OCR and visual perception system for PrintSensei. "
+                        "Thoroughly analyze the image. Extract every line of visible text, handwriting, "
+                        "mathematical formulas, diagram structures, flowcharts, and components. "
+                        "Identify spatial connections, arrows, hierarchies, and labels accurately."
+                    ),
                 },
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Extract all structural details from this image."},
+                        {
+                            "type": "text",
+                            "text": (
+                                "Extract all legible text, diagram flow, and visual components "
+                                "from this image for study notes generation."
+                            ),
+                        },
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_data}"
-                            }
-                        }
-                    ]
-                }
+                                "url": f"data:{mime_type};base64,{image_b64}",
+                                "detail": "high",
+                            },
+                        },
+                    ],
+                },
             ],
-            response_format=VisualAnalysis
+            response_format=VisualAnalysis,
         )
 
         return response.choices[0].message.parsed
