@@ -116,3 +116,20 @@ export function previewUrl(path) {
   if (!path || /^https?:\/\//i.test(path)) return path
   return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 }
+
+export async function transcribeAudio(audioBlob) {
+  const formData = new FormData()
+  formData.append('file', audioBlob, 'recording.webm')
+
+  const response = await fetch('http://127.0.0.1:8000/api/study/transcribe', {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new ApiError(errorData.detail || 'Audio transcription failed', response.status)
+  }
+
+  return response.json() // returns { text: "..." }
+}

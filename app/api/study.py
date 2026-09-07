@@ -2,6 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
+import io
+from openai import OpenAI
+from fastapi import UploadFile, File
+
 from app.enums.status import Status
 from app.schemas.study import (
     PreviewAsset,
@@ -158,3 +162,22 @@ def print_study_label(request_id: UUID) -> StudyPrintResponse:
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="Study printing will be implemented after preview generation.",
     )
+
+@router.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        buffer = io.BytesIO(content)
+        buffer.name = file.filename or "recording.webm"
+
+        client = OpenAI()
+        transcription = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=buffer,
+        )
+        return {"text": transcription.text.strip()}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Speech-to-text failed: {str(exc)}",
+        ) from exc

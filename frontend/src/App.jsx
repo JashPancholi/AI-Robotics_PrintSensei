@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ApiError, createHistoryShare, generateStudy, listHistory, previewUrl, printHistory, printQrShare } from './api.js'
 import CameraCapture from './components/CameraCapture'
+import { ApiError, createHistoryShare, generateStudy, listHistory, previewUrl, printHistory, printQrShare, transcribeAudio } from './api.js'
 
 const modeNames = { study: 'Study', inventory: 'Inventory', product: 'Product', qr: 'QR Code' }
 const iconStroke = (color = 'var(--dim)') => ({ stroke: color, fill: 'none', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' })
@@ -89,7 +89,7 @@ function ModeSelect({ onSelect, onHistory, onBack, onSettings }) {
 }
 
 const methods = [
-  { id: 'voice', label: 'Voice', sub: 'Coming soon', Icon: VoiceIcon, available: false },
+  { id: 'voice', label: 'Voice', sub: 'Speak prompt', Icon: VoiceIcon, available: true },
   { id: 'camera+voice', label: 'Camera', sub: 'Take photo', Icon: CameraVoiceIcon, available: true },
   { id: 'text', label: 'Text', sub: 'Type manually', Icon: TextIcon, available: true },
 ]
@@ -101,47 +101,167 @@ function InputMethod({ mode, onSelect, onBack }) {
 }
 
 function Capture({ mode, inputMethod, text, onTextChange, onCapture, onBack, attachedImage, onClearImage }) {
-  const [recordState, setRecordState] = useState('idle')
-  const isText = inputMethod === 'text' || inputMethod === 'camera+voice'
-  const finishRecording = () => { if (recordState !== 'holding') return; setRecordState('done'); window.setTimeout(onCapture, 600) }
+  const [recordState, setRecordState] = useState('idle') // 'idle' | 'holding' | 'transcribing'
+  const isTextOnly = inputMethod === 'text'
 
-  return <div className="screen">
-    <Bar>
-      <StatusDot color="var(--led-blue)" pulse />
-      <span className="bar-title status-title">{modeNames[mode]}</span>
-      {attachedImage && <span className="step-copy">· Photo Attached</span>}
-      <IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton>
-    </Bar>
-    {isText ? (
-      <div className="center-body text-body">
-        {attachedImage && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', padding: '4px 8px', background: 'var(--surface-subtle)', borderRadius: '6px', width: '100%' }}>
-            <img src={attachedImage.previewUrl} alt="Attached snapshot" style={{ width: '36px', height: '36px', objectFit: 'cover', borderRadius: '4px' }} />
-            <span style={{ fontSize: '11px', flex: 1, color: 'var(--sub)' }}>Photo attached</span>
-            <button type="button" onClick={onClearImage} style={{ background: 'none', border: 'none', color: 'var(--sub)', cursor: 'pointer', fontSize: '14px' }}>✕</button>
-          </div>
-        )}
-        <textarea value={text} maxLength={2000} onChange={(event) => onTextChange(event.target.value)} placeholder="Describe what to study from this topic or photo…" />
-        <button className="primary-button continue-button" disabled={!text.trim()} onClick={() => text.trim() && onCapture()}>Continue</button>
-      </div>
-    ) : (
-      <div className="center-body voice-body">
-        <div className="voice-visual">
-          <svg width="26" height="30" viewBox="0 0 26 30" fill="none">
-            <rect x="7" y="2" width="12" height="16" rx="6" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" />
-            <path d="M3 15c0 5.5 4.5 9 10 9s10-3.5 10-9" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" />
-            <line x1="13" y1="24" x2="13" y2="29" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" />
-          </svg>
-          <div className={recordState === 'holding' ? 'wave waveform' : 'waveform'}>
-            {[6, 12, 20, 26, 20, 12, 6].map((height, index) => <span key={index} style={{ height: recordState === 'holding' ? height : 4 }} />)}
-          </div>
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const streamRef = useRef(null)
+
+  const startRecording = async () => {
+    try {
+      audioChunksRef.current = []
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+
+      const mediaRecorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop())
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        if (audioBlob.size < 1000) {
+          setRecordState('idle')
+          return
+        }
+
+        setRecordState('transcribing')
+        try {
+          const res = await transcribeAudio(audioBlob)
+          if (res.text) {
+            // Populate the text without auto-submitting
+            onTextChange(res.text)
+          }
+        } catch (err) {
+          console.error('Transcription error:', err)
+        } finally {
+          setRecordState('idle')
+        }
+      }
+
+      mediaRecorder.start()
+      setRecordState('holding')
+    } catch (err) {
+      console.error('Microphone permission denied:', err)
+      setRecordState('idle')
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && recordState === 'holding') {
+      mediaRecorderRef.current.stop()
+    }
+  }
+
+  return (
+    <div className="screen">
+      <Bar>
+        <StatusDot color="var(--led-blue)" pulse />
+        <span className="bar-title status-title">{modeNames[mode]}</span>
+        {attachedImage && <span className="step-copy">· Photo Attached</span>}
+        <IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton>
+      </Bar>
+
+      {/* Image preview strip if a photo was captured */}
+      {attachedImage && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '3px 8px', background: 'var(--surface-subtle)', margin: '0 8px 4px 8px', borderRadius: '4px' }}>
+          <img src={attachedImage.previewUrl} alt="Attached snapshot" style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '3px' }} />
+          <span style={{ fontSize: '11px', flex: 1, color: 'var(--sub)' }}>Photo attached</span>
+          <button type="button" onClick={onClearImage} style={{ background: 'none', border: 'none', color: 'var(--sub)', cursor: 'pointer', fontSize: '12px' }}>✕</button>
         </div>
-        <button className={`primary-button record-button ${recordState}`} onPointerDown={() => setRecordState('holding')} onPointerUp={finishRecording} onPointerCancel={finishRecording} onPointerLeave={finishRecording}>
-          {recordState === 'done' ? 'Captured' : recordState === 'holding' ? 'Recording…' : 'Hold to Record'}
-        </button>
-      </div>
-    )}
-  </div>
+      )}
+
+      {isTextOnly ? (
+        <div className="center-body text-body">
+          <textarea
+            value={text}
+            maxLength={2000}
+            onChange={(event) => onTextChange(event.target.value)}
+            placeholder="Describe what to study…"
+          />
+          <button className="primary-button continue-button" disabled={!text.trim()} onClick={() => text.trim() && onCapture()}>
+            Continue
+          </button>
+        </div>
+      ) : (
+        <div className="center-body voice-body" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', padding: '4px 8px' }}>
+          {/* If text has been transcribed, show verification textarea */}
+          {text && recordState !== 'transcribing' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '6px', width: '100%', minHeight: 0 }}>
+              <span style={{ fontSize: '10px', color: 'var(--sub)' }}>Review Transcribed Text:</span>
+              <textarea
+                value={text}
+                onChange={(e) => onTextChange(e.target.value)}
+                style={{ flex: 1, width: '100%', resize: 'none', fontSize: '11px', padding: '6px', borderRadius: '4px', background: '#18181b', color: '#fff', border: '1px solid var(--border)', boxSizing: 'border-box' }}
+                placeholder="Transcribed text will appear here…"
+              />
+              <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', height: '32px' }}>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  style={{ fontSize: '11px', padding: '4px 10px' }}
+                  onPointerDown={startRecording}
+                  onPointerUp={stopRecording}
+                  onPointerCancel={stopRecording}
+                  onPointerLeave={stopRecording}
+                >
+                  {recordState === 'holding' ? 'Recording…' : 'Re-record'}
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  style={{ fontSize: '11px', padding: '4px 14px' }}
+                  disabled={!text.trim()}
+                  onClick={() => text.trim() && onCapture()}
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Initial state: Voice recording visualizer */
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: '10px' }}>
+              <div className="voice-visual">
+                <svg width="26" height="30" viewBox="0 0 26 30" fill="none">
+                  <rect x="7" y="2" width="12" height="16" rx="6" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" />
+                  <path d="M3 15c0 5.5 4.5 9 10 9s10-3.5 10-9" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" />
+                  <line x1="13" y1="24" x2="13" y2="29" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+                <div className={recordState === 'holding' ? 'wave waveform' : 'waveform'}>
+                  {[6, 12, 20, 26, 20, 12, 6].map((height, index) => (
+                    <span key={index} style={{ height: recordState === 'holding' ? height : 4 }} />
+                  ))}
+                </div>
+              </div>
+
+              <span style={{ fontSize: '11px', color: recordState === 'transcribing' ? 'var(--led-purple)' : 'var(--sub)' }}>
+                {recordState === 'transcribing' ? 'Transcribing with Whisper…' : recordState === 'holding' ? 'Listening…' : 'Hold button and speak'}
+              </span>
+
+              <button
+                type="button"
+                className={`primary-button record-button ${recordState}`}
+                onPointerDown={startRecording}
+                onPointerUp={stopRecording}
+                onPointerCancel={stopRecording}
+                onPointerLeave={stopRecording}
+                disabled={recordState === 'transcribing'}
+              >
+                {recordState === 'transcribing' ? 'Processing…' : recordState === 'holding' ? 'Release to Send' : 'Hold to Speak'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function Processing({ onCancel, progress, stage }) {
@@ -233,8 +353,8 @@ export default function App() {
     window.localStorage.setItem('printsensei-brightness', String(brightness))
   }, [brightness])
 
-  const submitStudy = useCallback(async () => {
-    const text = studyText.trim()
+  const submitStudy = useCallback(async (customText = null) => {
+    const text = (customText || studyText).trim()
     if (!text) return
 
     requestController.current?.abort()
