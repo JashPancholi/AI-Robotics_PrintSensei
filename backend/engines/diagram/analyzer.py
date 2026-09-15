@@ -1,21 +1,26 @@
 import os
 from typing import Optional, Union
+from backend.services.ai.nvidia_provider import NvidiaProvider
 from backend.services.ai.openai_provider import OpenAIProvider
 from backend.services.ai.openrouter_provider import OpenRouterProvider
 from backend.services.vision.models import VisualAnalysis
 from .models import DiagramSpecification
 
 
-def _default_ai_provider() -> Union[OpenAIProvider, OpenRouterProvider]:
-    """Prefer OpenRouter when its key is present (OpenAI creds are empty).
+def _default_ai_provider() -> Union[NvidiaProvider, OpenAIProvider, OpenRouterProvider]:
+    """Prefer explicit AI_PROVIDER, else NVIDIA, else OpenRouter, else OpenAI.
 
-    Explicit override via AI_PROVIDER=openai|openrouter.
+    Explicit override via AI_PROVIDER=nvidia|openai|openrouter.
     """
     explicit = os.getenv("AI_PROVIDER", "").strip().lower()
+    if explicit == "nvidia":
+        return NvidiaProvider()
     if explicit == "openai":
         return OpenAIProvider()
     if explicit == "openrouter":
         return OpenRouterProvider()
+    if os.getenv("NVIDIA_API_KEY"):
+        return NvidiaProvider()
     if os.getenv("OPENROUTER_API_KEY"):
         return OpenRouterProvider()
     return OpenAIProvider()
@@ -27,7 +32,7 @@ class DiagramAnalyzer:
     Uses AI for understanding.
     """
 
-    def __init__(self, provider: Optional[Union[OpenAIProvider, OpenRouterProvider]] = None):
+    def __init__(self, provider: Optional[Union[NvidiaProvider, OpenAIProvider, OpenRouterProvider]] = None):
         self.ai = provider or _default_ai_provider()
 
     def analyze(self, request, vision_context: Optional[VisualAnalysis] = None) -> DiagramSpecification:

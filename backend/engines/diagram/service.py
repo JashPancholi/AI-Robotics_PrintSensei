@@ -16,10 +16,14 @@ class DiagramService:
         self.image_service = ImageGenerationService()
 
     def generate(self, request):
-        # Step 1: Optional visual perception
+        # Step 1: Optional visual perception (non-fatal: fall back to
+        # text-only if the free vision model misbehaves).
         vision_data = None
         if getattr(request, "image", None):
-            vision_data = self.vision_service.analyze(request.image)
+            try:
+                vision_data = self.vision_service.analyze(request.image)
+            except Exception as exc:  # noqa: BLE001 - vision is best-effort
+                print(f"[DiagramService] Vision analysis failed, continuing without it: {exc}")
 
         # Step 2: Understand user request (grounded with vision context)
         specification = self.analyzer.analyze(
