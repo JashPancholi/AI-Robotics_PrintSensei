@@ -71,6 +71,7 @@ svg { display: block; }
 .close-button { margin-left: auto; color: var(--dim); font-size: var(--fs-b); }
 .camera-body { gap: 14px; }
 .camera-frame { position: relative; width: 200px; height: 110px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); }
+.camera-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 .corner { position: absolute; width: 14px; height: 14px; }
 .corner.top { top: 6px; border-top: 1.5px solid var(--sub); }
 .corner.bottom { bottom: 6px; border-bottom: 1.5px solid var(--sub); }
@@ -80,6 +81,7 @@ svg { display: block; }
 .capture-done { color: var(--led-green); }
 .capture-button { width: 160px; transition: background .15s; }
 .capture-button.is-captured { background: var(--led-green); }
+.camera-file-input { display: none; }
 
 .text-body { gap: 14px; padding: 12px 14px; }
 .text-body textarea { width: 100%; height: 90px; padding: 8px 10px; resize: none; outline: 0; color: var(--text); font-size: var(--fs-b); line-height: 1.5; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); }
@@ -116,6 +118,7 @@ svg { display: block; }
 .label-footer { margin-top: 8px; padding-top: 7px; color: var(--dim); font-size: 9px; letter-spacing: .05em; border-top: 1px solid var(--border); }
 .preview-actions { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--surface); }
 .preview-actions button { flex: 1; }
+.generated-image { width: 100%; max-height: 138px; object-fit: contain; display: block; margin: 0 auto 10px; border: 1px solid var(--border); background: #fff; }
 
 .printing-body { gap: 14px; }
 .printed-copy div { font-weight: 700; }

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+
+const exampleStudyPrompt = 'Make me a detailed labeled diagram of the IEM in the reference image including its internals as well'
 
 const history = [
   { id: 1, title: 'Binary Search', desc: 'O(log n) · divide & conquer', mode: 'study', time: '09:41' },
@@ -108,9 +110,49 @@ function InputMethod({ mode, onSelect, onBack }) {
 
 function CameraCapture({ onCaptured, onBack }) {
   const [captured, setCaptured] = useState(false)
-  const capture = () => { setCaptured(true); window.setTimeout(onCaptured, 700) }
+  const [cameraError, setCameraError] = useState('')
+  const videoRef = useRef(null)
+  const streamRef = useRef(null)
+  const stopCamera = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+  }
+  useEffect(() => {
+    let active = true
+    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+      .then((stream) => {
+        if (!active) { stream.getTracks().forEach((track) => track.stop()); return }
+        streamRef.current = stream
+        if (videoRef.current) videoRef.current.srcObject = stream
+      })
+      .catch(() => setCameraError('Camera access was denied or is unavailable.'))
+    return () => { active = false; stopCamera() }
+  }, [])
+  const takePhoto = () => {
+    const video = videoRef.current
+    if (!video?.videoWidth) return
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+    const image = canvas.toDataURL('image/png')
+    setCaptured(true)
+    stopCamera()
+    window.setTimeout(() => onCaptured(image), 450)
+  }
+  return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">Camera</span><span className="step-copy">Step 1 of 2</span><IconButton label="Close" className="close-button" onClick={onBack}>Close</IconButton></Bar><div className="center-body camera-body"><div className="camera-frame"><video ref={videoRef} className="camera-video" autoPlay playsInline muted /><i className="corner top left" /><i className="corner top right" /><i className="corner bottom left" /><i className="corner bottom right" /><span className="camera-prompt">{cameraError || (captured ? 'Captured' : 'Aim at subject')}</span></div><button className={`primary-button capture-button ${captured ? 'is-captured' : ''}`} disabled={captured || Boolean(cameraError)} onClick={takePhoto}>{captured ? 'Captured' : 'Capture Photo'}</button></div></div>
+  const fileInput = useRef(null)
+  const capture = () => fileInput.current?.click()
+  const selectImage = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => { setCaptured(true); window.setTimeout(() => onCaptured(reader.result), 500) }
+    reader.readAsDataURL(file)
+  }
   return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">Camera</span><span className="step-copy">· step 1 of 2</span><IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton></Bar>
     <div className="center-body camera-body"><div className="camera-frame"><i className="corner top left" /><i className="corner top right" /><i className="corner bottom left" /><i className="corner bottom right" /><span className={captured ? 'capture-done' : 'camera-prompt'}>{captured ? 'Captured ✓' : 'Aim at subject'}</span></div>
+      <input ref={fileInput} className="camera-file-input" type="file" accept="image/*" capture="environment" onChange={selectImage} />
       <button className={`primary-button capture-button ${captured ? 'is-captured' : ''}`} disabled={captured} onClick={capture}>{captured ? 'Captured' : 'Capture Photo'}</button>
     </div>
   </div>
@@ -120,7 +162,7 @@ function Capture({ mode, inputMethod, onCapture, onBack }) {
   const [recordState, setRecordState] = useState('idle')
   const [text, setText] = useState('')
   const isText = inputMethod === 'text'
-  const finishRecording = () => { if (recordState !== 'holding') return; setRecordState('done'); window.setTimeout(onCapture, 600) }
+  const finishRecording = () => { if (recordState !== 'holding') return; setRecordState('done'); window.setTimeout(() => onCapture(exampleStudyPrompt), 600) }
   return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">{modeNames[mode]}</span>{inputMethod === 'camera+voice' && <span className="step-copy">· step 2 of 2</span>}<IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton></Bar>
     {isText ? <div className="center-body text-body"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Describe what to label…" /><button className="primary-button continue-button" disabled={!text.trim()} onClick={() => text.trim() && onCapture()}>Continue</button></div>
       : <div className="center-body voice-body"><div className="voice-visual"><svg width="26" height="30" viewBox="0 0 26 30" fill="none"><rect x="7" y="2" width="12" height="16" rx="6" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" /><path d="M3 15c0 5.5 4.5 9 10 9s10-3.5 10-9" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" /><line x1="13" y1="24" x2="13" y2="29" stroke={recordState === 'holding' ? 'var(--led-blue)' : 'var(--dim)'} strokeWidth="1.4" strokeLinecap="round" /></svg>
@@ -130,7 +172,8 @@ function Capture({ mode, inputMethod, onCapture, onBack }) {
   </div>
 }
 
-function Processing({ onCancel }) {
+function Processing({ onCancel, error }) {
+  if (error) return <div className="screen"><Bar><span className="bar-title">Generation failed</span></Bar><div className="center-body processing-body"><div className="processing-copy"><div>{error}</div><span>Check the AI image provider configuration and try again.</span></div><button className="ghost-button" onClick={onCancel}>Back</button></div></div>
   return <div className="screen"><Bar><StatusDot color="var(--led-purple)" pulse /><span className="bar-title status-title">Processing</span></Bar><div className="center-body processing-body"><svg width="36" height="36" viewBox="0 0 36 36" fill="none" className="spin"><circle cx="18" cy="18" r="14" stroke="var(--border)" strokeWidth="3" /><path d="M18 4a14 14 0 0 1 14 14" stroke="var(--led-purple)" strokeWidth="3" strokeLinecap="round" /></svg><div className="processing-copy"><div>Generating label</div><span>AI is creating content…</span></div><div className="progress-track processing-progress"><div className="fill-anim" /></div><button className="ghost-button" onClick={onCancel}>Cancel</button></div></div>
 }
 
@@ -141,9 +184,12 @@ const previews = {
   qr: { title: 'printsensei.local', desc: 'Local network resource link' },
 }
 
-function Preview({ mode, onEdit, onPrint }) {
+function Preview({ mode, onEdit, onPrint, generatedImage }) {
   const { title, desc } = previews[mode]
   const date = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
+  const displayTitle = generatedImage ? 'Generated study diagram' : title
+  const displayDesc = generatedImage ? 'Ready to download and print' : desc
+  if (generatedImage) return <div className="screen"><Bar><span className="bar-title">Study image</span><span className="bar-meta">Ready</span></Bar><div className="center-body preview-body"><img className="generated-image" src={generatedImage} alt="Generated study diagram" /><div className="preview-actions"><button className="ghost-button" onClick={onEdit}>Edit</button><button className="primary-button" onClick={onPrint}>Download</button></div></div></div>
   return <div className="screen"><Bar><span className="bar-title">Preview</span><span className="bar-meta">{modeNames[mode]}</span></Bar><div className="center-body preview-body"><div className="label-preview"><div className="label-main"><div className="label-copy"><div className="label-title">{title}</div><div className="label-desc">{desc}</div></div><div className="qr-box"><QrIcon /></div></div><div className="label-footer mono">PRINTSENSEI · {date} · 62×29MM</div></div></div><div className="preview-actions"><button className="ghost-button" onClick={onEdit}>Edit</button><button className="primary-button" onClick={onPrint}>Print</button></div></div>
 }
 
@@ -180,24 +226,56 @@ export default function App() {
   const [screen, setScreen] = useState('home')
   const [mode, setMode] = useState('study')
   const [inputMethod, setInputMethod] = useState('voice')
+  const [referenceImage, setReferenceImage] = useState(null)
+  const [generatedImage, setGeneratedImage] = useState(null)
+  const [generationError, setGenerationError] = useState('')
   const scale = useDisplayScale()
   const go = useCallback((next) => setScreen(next), [])
 
+  const generateStudyImage = async (prompt = exampleStudyPrompt) => {
+    setGenerationError('')
+    go('processing')
+    try {
+      const response = await fetch('/study/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, image_data: referenceImage }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail || 'Unable to generate the image.')
+      setGeneratedImage(data.image_url)
+      go('preview')
+    } catch (error) {
+      setGenerationError(error.message || 'Unable to generate the image.')
+    }
+  }
+
+  const downloadGeneratedImage = () => {
+    if (!generatedImage) return
+    const link = document.createElement('a')
+    link.href = generatedImage
+    link.download = 'printsensei-study-diagram.png'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    go('printing')
+  }
+
   useEffect(() => {
-    if (screen !== 'processing') return undefined
+    if (screen !== 'processing' || mode === 'study' || generationError) return undefined
     const timer = window.setTimeout(() => go('preview'), 2600)
     return () => window.clearTimeout(timer)
-  }, [screen, go])
+  }, [screen, mode, generationError, go])
 
   const selectMethod = (method) => { setInputMethod(method); go(method === 'camera+voice' ? 'camera-capture' : 'capture') }
   const renderScreen = () => {
     switch (screen) {
       case 'mode-select': return <ModeSelect onSelect={(value) => { setMode(value); go('input-method') }} onBack={() => go('home')} onSettings={() => go('settings')} />
       case 'input-method': return <InputMethod mode={mode} onSelect={selectMethod} onBack={() => go('mode-select')} />
-      case 'camera-capture': return <CameraCapture onCaptured={() => go('capture')} onBack={() => go('input-method')} />
-      case 'capture': return <Capture mode={mode} inputMethod={inputMethod} onCapture={() => go('processing')} onBack={() => go('input-method')} />
-      case 'processing': return <Processing onCancel={() => go('home')} />
-      case 'preview': return <Preview mode={mode} onEdit={() => go('capture')} onPrint={() => go('printing')} />
+      case 'camera-capture': return <CameraCapture onCaptured={(image) => { setReferenceImage(image); go('capture') }} onBack={() => go('input-method')} />
+      case 'capture': return <Capture mode={mode} inputMethod={inputMethod} onCapture={(prompt) => mode === 'study' ? generateStudyImage(prompt || document.querySelector('.text-body textarea')?.value || exampleStudyPrompt) : go('processing')} onBack={() => go('input-method')} />
+      case 'processing': return <Processing onCancel={() => go('home')} error={generationError} />
+      case 'preview': return <Preview mode={mode} generatedImage={generatedImage} onEdit={() => go('capture')} onPrint={generatedImage ? downloadGeneratedImage : () => go('printing')} />
       case 'printing': return <Printing onDone={() => go('home')} />
       case 'settings': return <Settings onBack={() => go('home')} />
       case 'history': return <History onBack={() => go('home')} onReprint={(item) => { setMode(item.mode); go('printing') }} />
