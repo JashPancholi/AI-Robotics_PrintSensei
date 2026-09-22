@@ -158,10 +158,88 @@ function CameraCapture({ onCaptured, onBack }) {
   </div>
 }
 
+function VoiceRecorder({ mode, onCapture, onBack }) {
+  const [state, setState] = useState('idle')
+  const [error, setError] = useState('')
+  const [transcript, setTranscript] = useState('')
+  const recorderRef = useRef(null)
+  const streamRef = useRef(null)
+  const chunksRef = useRef([])
+  const partialTimerRef = useRef(null)
+  const requestActiveRef = useRef(false)
+
+  const stopStream = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+  }
+
+  useEffect(() => () => { window.clearInterval(partialTimerRef.current); stopStream() }, [])
+
+  const transcribeCurrentAudio = async (final = false) => {
+    if (!chunksRef.current.length || requestActiveRef.current) return transcript
+    requestActiveRef.current = true
+    try {
+      const audio = new Blob(chunksRef.current, { type: recorderRef.current?.mimeType || 'audio/webm' })
+      const form = new FormData()
+      form.append('audio', audio, 'recording.webm')
+      const response = await fetch('/voice/transcribe', { method: 'POST', body: form })
+      const body = await response.text()
+      let data = {}
+      try { data = body ? JSON.parse(body) : {} } catch { throw new Error('Voice server returned an invalid response.') }
+      if (!response.ok) throw new Error(data.detail || `Transcription failed (${response.status}).`)
+      setTranscript(data.text)
+      return data.text
+    } catch (exception) {
+      if (final) setError(exception.message || 'Transcription failed.')
+      return ''
+    } finally {
+      requestActiveRef.current = false
+    }
+  }
+
+  const beginRecording = async () => {
+    if (state !== 'idle') return
+    setError('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      streamRef.current = stream
+      chunksRef.current = []
+      recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data) }
+      recorder.onstop = async () => {
+        window.clearInterval(partialTimerRef.current)
+        stopStream()
+        setState('transcribing')
+        const text = await transcribeCurrentAudio(true)
+        if (text) onCapture(text)
+        else setState('idle')
+      }
+      recorderRef.current = recorder
+      recorder.start(1000)
+      partialTimerRef.current = window.setInterval(() => { transcribeCurrentAudio() }, 2500)
+      setState('recording')
+    } catch {
+      setError('Microphone access was denied or is unavailable.')
+    }
+  }
+
+  const finishRecording = () => {
+    if (state === 'recording' && recorderRef.current?.state === 'recording') recorderRef.current.stop()
+  }
+
+  const label = state === 'recording' ? 'Recording...' : state === 'transcribing' ? 'Transcribing...' : 'Hold to Record'
+  return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">{modeNames[mode]}</span><IconButton label="Close" className="close-button" onClick={onBack}>Close</IconButton></Bar><div className="center-body voice-body"><div className="voice-visual"><VoiceIcon /><div className={state === 'recording' ? 'wave waveform' : 'waveform'}>{[6, 12, 20, 26, 20, 12, 6].map((height, index) => <span key={index} style={{ height: state === 'recording' ? height : 4 }} />)}</div></div><div className="live-transcript">{transcript || (state === 'recording' ? 'Listening...' : 'Your words will appear here.')}</div>{error && <span className="voice-error">{error}</span>}<button className={`primary-button record-button ${state === 'recording' ? 'holding' : ''}`} disabled={state === 'transcribing'} onPointerDown={beginRecording} onPointerUp={finishRecording} onPointerCancel={finishRecording} onPointerLeave={finishRecording}>{label}</button></div></div>
+}
+
+function VoiceResult({ transcript, onBack, onGenerate, hasReferenceImage }) {
+  return <div className="screen"><Bar><span className="bar-title">Voice recognized</span></Bar><div className="center-body voice-result-body"><div className="transcript-card">{transcript}</div><span className="voice-result-note">English output · faster-whisper tiny{hasReferenceImage ? ' · camera image attached' : ''}</span><div className="voice-result-actions"><button className="ghost-button" onClick={onBack}>Discard</button><button className="primary-button" onClick={onGenerate}>Generate image</button></div></div></div>
+}
+
 function Capture({ mode, inputMethod, onCapture, onBack }) {
   const [recordState, setRecordState] = useState('idle')
   const [text, setText] = useState('')
   const isText = inputMethod === 'text'
+  if (!isText) return <VoiceRecorder mode={mode} onCapture={onCapture} onBack={onBack} />
   const finishRecording = () => { if (recordState !== 'holding') return; setRecordState('done'); window.setTimeout(() => onCapture(exampleStudyPrompt), 600) }
   return <div className="screen"><Bar><StatusDot color="var(--led-blue)" pulse /><span className="bar-title status-title">{modeNames[mode]}</span>{inputMethod === 'camera+voice' && <span className="step-copy">· step 2 of 2</span>}<IconButton label="Close" className="close-button" onClick={onBack}>×</IconButton></Bar>
     {isText ? <div className="center-body text-body"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Describe what to label…" /><button className="primary-button continue-button" disabled={!text.trim()} onClick={() => text.trim() && onCapture()}>Continue</button></div>
@@ -229,6 +307,7 @@ export default function App() {
   const [referenceImage, setReferenceImage] = useState(null)
   const [generatedImage, setGeneratedImage] = useState(null)
   const [generationError, setGenerationError] = useState('')
+  const [voiceTranscript, setVoiceTranscript] = useState('')
   const scale = useDisplayScale()
   const go = useCallback((next) => setScreen(next), [])
 
@@ -267,13 +346,14 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [screen, mode, generationError, go])
 
-  const selectMethod = (method) => { setInputMethod(method); go(method === 'camera+voice' ? 'camera-capture' : 'capture') }
+  const selectMethod = (method) => { setInputMethod(method); setGeneratedImage(null); if (method !== 'camera+voice') setReferenceImage(null); go(method === 'camera+voice' ? 'camera-capture' : 'capture') }
   const renderScreen = () => {
     switch (screen) {
       case 'mode-select': return <ModeSelect onSelect={(value) => { setMode(value); go('input-method') }} onBack={() => go('home')} onSettings={() => go('settings')} />
       case 'input-method': return <InputMethod mode={mode} onSelect={selectMethod} onBack={() => go('mode-select')} />
       case 'camera-capture': return <CameraCapture onCaptured={(image) => { setReferenceImage(image); go('capture') }} onBack={() => go('input-method')} />
-      case 'capture': return <Capture mode={mode} inputMethod={inputMethod} onCapture={(prompt) => mode === 'study' ? generateStudyImage(prompt || document.querySelector('.text-body textarea')?.value || exampleStudyPrompt) : go('processing')} onBack={() => go('input-method')} />
+      case 'capture': return <Capture mode={mode} inputMethod={inputMethod} onCapture={(text) => { setVoiceTranscript(text || document.querySelector('.text-body textarea')?.value || ''); go('voice-result') }} onBack={() => go('input-method')} />
+      case 'voice-result': return <VoiceResult transcript={voiceTranscript} hasReferenceImage={Boolean(referenceImage)} onBack={() => go('home')} onGenerate={() => mode === 'study' ? generateStudyImage(voiceTranscript) : go('processing')} />
       case 'processing': return <Processing onCancel={() => go('home')} error={generationError} />
       case 'preview': return <Preview mode={mode} generatedImage={generatedImage} onEdit={() => go('capture')} onPrint={generatedImage ? downloadGeneratedImage : () => go('printing')} />
       case 'printing': return <Printing onDone={() => go('home')} />

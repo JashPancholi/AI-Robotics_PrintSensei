@@ -99,6 +99,13 @@ svg { display: block; }
 .record-button { width: 200px; transition: background .15s; touch-action: none; }
 .record-button.holding { background: var(--led-blue); }
 .record-button.done { background: var(--led-green); }
+.voice-error { max-width: 220px; color: #e55353; font-size: var(--fs-xs); text-align: center; }
+.live-transcript { width: 230px; min-height: 34px; max-height: 58px; overflow-y: auto; padding: 7px 9px; color: var(--text); font-size: var(--fs-xs); line-height: 1.35; text-align: center; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); }
+.voice-result-body { gap: 14px; padding: 14px; }
+.transcript-card { width: 100%; max-height: 90px; overflow-y: auto; padding: 10px; color: var(--text); font-size: var(--fs-b); line-height: 1.45; border: 1px solid var(--border); border-radius: 2px; background: var(--surface); }
+.voice-result-note { color: var(--sub); font-size: var(--fs-xs); text-align: center; }
+.voice-result-actions { width: 100%; display: flex; gap: 8px; }
+.voice-result-actions button { flex: 1; }
 
 .processing-body { gap: 16px; }
 .processing-copy, .printed-copy { text-align: center; }

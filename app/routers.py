@@ -1,9 +1,10 @@
 import base64
 import binascii
+import tempfile
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.responses import HTMLResponse
 from app.core.fake_request_generator import create_fake_print_request
@@ -14,6 +15,7 @@ from app.schemas.simulate import SimulateRequest, SimulateResponse
 from backend.core.enums import TaskType
 from backend.core.request import Request
 from backend.engines.diagram.service import DiagramService
+from backend.services.speech import get_speech_service
 from shared.config import APP_NAME, APP_VERSION, MODE, HARDWARE_MODE
 
 router = APIRouter()
@@ -42,6 +44,30 @@ def _save_reference_image(image_data: str | None) -> Path | None:
     image_path = uploads / f"reference_{uuid.uuid4().hex[:8]}.png"
     image_path.write_bytes(image_bytes)
     return image_path
+
+
+@router.post("/voice/transcribe")
+async def transcribe_voice(audio: UploadFile = File(...)):
+    """Transcribe a browser-recorded audio clip with local faster-whisper tiny."""
+    if not (audio.content_type or "").startswith("audio/"):
+        raise HTTPException(status_code=415, detail="Please upload an audio recording.")
+
+    suffix = Path(audio.filename or "recording.webm").suffix or ".webm"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temporary_file:
+        temporary_file.write(await audio.read())
+        audio_path = Path(temporary_file.name)
+
+    try:
+        text, language = get_speech_service().transcribe(audio_path)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Voice transcription failed. Confirm faster-whisper and its model are installed.") from exc
+    finally:
+        audio_path.unlink(missing_ok=True)
+
+    if not text:
+        raise HTTPException(status_code=422, detail="No speech was detected. Please try again.")
+
+    return {"text": text, "language": language, "model": "tiny"}
 
 
 @router.get("/", response_class=HTMLResponse)

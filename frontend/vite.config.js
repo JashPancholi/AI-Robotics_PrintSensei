@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/study': 'http://127.0.0.1:8000',
+      '/voice': 'http://127.0.0.1:8000',
       '/generated-images': 'http://127.0.0.1:8000',
     },
   },
