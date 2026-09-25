@@ -262,12 +262,12 @@ const previews = {
   qr: { title: 'printsensei.local', desc: 'Local network resource link' },
 }
 
-function Preview({ mode, onEdit, onPrint, generatedImage }) {
+function Preview({ mode, onEdit, onPrint, generatedImage, isPrinting, printError }) {
   const { title, desc } = previews[mode]
   const date = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
   const displayTitle = generatedImage ? 'Generated study diagram' : title
   const displayDesc = generatedImage ? 'Ready to download and print' : desc
-  if (generatedImage) return <div className="screen"><Bar><span className="bar-title">Study image</span><span className="bar-meta">Ready</span></Bar><div className="center-body preview-body"><img className="generated-image" src={generatedImage} alt="Generated study diagram" /><div className="preview-actions"><button className="ghost-button" onClick={onEdit}>Edit</button><button className="primary-button" onClick={onPrint}>Download</button></div></div></div>
+  if (generatedImage) return <div className="screen"><Bar><span className="bar-title">Study image</span><span className="bar-meta">Ready</span></Bar><div className="center-body preview-body"><img className="generated-image" src={generatedImage} alt="Generated study diagram" /><div className="preview-actions"><button className="ghost-button" disabled={isPrinting} onClick={onEdit}>Edit</button><button className="primary-button" disabled={isPrinting} onClick={onPrint}>{isPrinting ? 'Sending…' : 'Print'}</button></div>{printError && <span className="voice-error">{printError}</span>}</div></div>
   return <div className="screen"><Bar><span className="bar-title">Preview</span><span className="bar-meta">{modeNames[mode]}</span></Bar><div className="center-body preview-body"><div className="label-preview"><div className="label-main"><div className="label-copy"><div className="label-title">{title}</div><div className="label-desc">{desc}</div></div><div className="qr-box"><QrIcon /></div></div><div className="label-footer mono">PRINTSENSEI · {date} · 62×29MM</div></div></div><div className="preview-actions"><button className="ghost-button" onClick={onEdit}>Edit</button><button className="primary-button" onClick={onPrint}>Print</button></div></div>
 }
 
@@ -307,6 +307,8 @@ export default function App() {
   const [referenceImage, setReferenceImage] = useState(null)
   const [generatedImage, setGeneratedImage] = useState(null)
   const [generationError, setGenerationError] = useState('')
+  const [printError, setPrintError] = useState('')
+  const [isPrinting, setIsPrinting] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const scale = useDisplayScale()
   const go = useCallback((next) => setScreen(next), [])
@@ -329,15 +331,33 @@ export default function App() {
     }
   }
 
-  const downloadGeneratedImage = () => {
+  const printGeneratedImage = async () => {
     if (!generatedImage) return
-    const link = document.createElement('a')
-    link.href = generatedImage
-    link.download = 'printsensei-study-diagram.png'
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    go('printing')
+    setPrintError('')
+    setIsPrinting(true)
+    try {
+      const imageResponse = await fetch(generatedImage)
+      if (!imageResponse.ok) throw new Error('Could not read the generated image.')
+      const imageBlob = await imageResponse.blob()
+      const base64Image = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = () => reject(new Error('Could not prepare the image for printing.'))
+        reader.readAsDataURL(imageBlob)
+      })
+      const response = await fetch('/api/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_base64: base64Image, label_width_mm: 50, label_height_mm: 50, gap_mm: 2 }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail || 'The printer rejected the print job.')
+      go('printing')
+    } catch (error) {
+      setPrintError(error.message || 'Could not send the print job.')
+    } finally {
+      setIsPrinting(false)
+    }
   }
 
   useEffect(() => {
@@ -355,7 +375,7 @@ export default function App() {
       case 'capture': return <Capture mode={mode} inputMethod={inputMethod} onCapture={(text) => { setVoiceTranscript(text || document.querySelector('.text-body textarea')?.value || ''); go('voice-result') }} onBack={() => go('input-method')} />
       case 'voice-result': return <VoiceResult transcript={voiceTranscript} hasReferenceImage={Boolean(referenceImage)} onBack={() => go('home')} onGenerate={() => mode === 'study' ? generateStudyImage(voiceTranscript) : go('processing')} />
       case 'processing': return <Processing onCancel={() => go('home')} error={generationError} />
-      case 'preview': return <Preview mode={mode} generatedImage={generatedImage} onEdit={() => go('capture')} onPrint={generatedImage ? downloadGeneratedImage : () => go('printing')} />
+      case 'preview': return <Preview mode={mode} generatedImage={generatedImage} isPrinting={isPrinting} printError={printError} onEdit={() => go('capture')} onPrint={generatedImage ? printGeneratedImage : () => go('printing')} />
       case 'printing': return <Printing onDone={() => go('home')} />
       case 'settings': return <Settings onBack={() => go('home')} />
       case 'history': return <History onBack={() => go('home')} onReprint={(item) => { setMode(item.mode); go('printing') }} />

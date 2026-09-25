@@ -17,8 +17,37 @@ from backend.core.request import Request
 from backend.engines.diagram.service import DiagramService
 from backend.services.speech import get_speech_service
 from shared.config import APP_NAME, APP_VERSION, MODE, HARDWARE_MODE
+from app.services.printer import print_label
+from io import BytesIO
+from PIL import Image, UnidentifiedImageError
 
 router = APIRouter()
+
+
+class HardwarePrintRequest(BaseModel):
+    """A PNG/JPEG data URI plus the physical media dimensions in millimetres."""
+
+    image_base64: str = Field(min_length=1, max_length=15_000_000)
+    label_width_mm: int = Field(default=50, ge=10, le=120)
+    label_height_mm: int = Field(default=50, ge=10, le=300)
+    gap_mm: int = Field(default=2, ge=0, le=20)
+
+
+@router.post("/api/print")
+def print_hardware_label(payload: HardwarePrintRequest):
+    """Decode a browser image and send it as raw TSPL to the thermal printer."""
+    encoded = payload.image_base64.split(",", 1)[-1]
+    try:
+        image_bytes = base64.b64decode(encoded, validate=True)
+        image = Image.open(BytesIO(image_bytes))
+        image.load()
+    except (binascii.Error, ValueError, UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(status_code=422, detail="image_base64 must contain a valid image.") from exc
+
+    success, message = print_label(image, payload.label_width_mm, payload.label_height_mm, payload.gap_mm)
+    if not success:
+        raise HTTPException(status_code=502, detail=f"Printer error: {message}")
+    return {"status": "success", "message": message}
 
 
 class StudyGenerationRequest(BaseModel):
