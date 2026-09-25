@@ -1,4 +1,4 @@
-.venv/
+/m.venv/
 venv/
 
 # JavaScript dependencies and build output
@@ -18,10 +18,8 @@ __pycache__/
 *.db
 
 generated_labels/
-diagram_images/
 
 temporary/
 
 .vscode/
 
-__init__.py
