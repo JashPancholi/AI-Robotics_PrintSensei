@@ -1,8 +1,5 @@
 # PrintSensei
 
-<<<<<<< HEAD
-Phase 1 foundation for the PrintSensei project.
-=======
 ## An Intelligent Multimodal Robotic Labeling and Knowledge Assistant
 
 PrintSensei is a Raspberry Pi-based stationary robotic assistant that understands voice commands, camera images, printed documents, dashboard inputs, and physical objects.
@@ -970,11 +967,103 @@ PrintSensei extends existing multimodal AI assistant concepts by introducing aut
 - [ ] System testing
 - [ ] Final demonstration
 
+## Recent Updates, Features & Operational Guide
+
+This section outlines the latest updates, architectural enhancements, hardware integrations, and instructions for running PrintSensei across desktop and mobile devices.
+
 ---
 
-## Final Project Definition
+### 1. Key Features & Updates Added
 
-> PrintSensei is a Raspberry Pi-based intelligent multimodal robotic labeling and knowledge assistant that uses speech recognition, computer vision, OCR, object detection, local AI models, and cloud-based AI APIs to understand user requests and automatically generate and print context-aware labels, study cards, inventory tags, product stickers, and QR-enabled knowledge labels using a 58 mm thermal printer.
+#### 🎙️ High-Performance Local Speech-to-Text (STT)
+- **Engine**: Powered by `faster-whisper` (`WhisperModel("tiny", device="cpu", compute_type="int8")`) in [backend/services/speech/service.py](file:///c:/Users/jash2/AI-Robotics_PrintSensei/backend/services/speech/service.py).
+- **Functionality**: Transcribes and translates speech into English text with voice activity detection (`vad_filter=True`) optimized for low-latency CPU and Raspberry Pi execution.
+- **Workflow**: The frontend captures microphone audio as a WebM/WAV audio blob, dispatches it to the `/voice/transcribe` endpoint, and uses the transcribed text to drive study card queries, diagrams, and label printing.
+
+#### 📱 Mobile Network Access & Secure Microphone Context
+- **Local Network Binding**: Configured Vite dev server with `server.host: true` to bind to `0.0.0.0`, allowing mobile devices on the same Wi-Fi network to load the interface.
+- **HTTPS & SSL Support (`@vitejs/plugin-basic-ssl`)**: Modern mobile browsers (iOS Safari, Android Chrome) block hardware APIs like `navigator.mediaDevices.getUserMedia` (Microphone and Camera) on insecure plain `http://` network origins. By enabling SSL in [frontend/vite.config.js](file:///c:/Users/jash2/AI-Robotics_PrintSensei/frontend/vite.config.js), mobile browsers treat the connection as a Secure Context (`https://`), unlocking full mobile microphone recording.
+- **FastAPI Cross-Origin Support**: Added `CORSMiddleware` in [app/main.py](file:///c:/Users/jash2/AI-Robotics_PrintSensei/app/main.py) with open origin permissions for mobile clients and API proxies.
+
+#### 🖨️ Thermal Printing Pipeline (58 mm TSPL)
+- **Direct TSPL Bitmap Encoder**: Built `app/services/printer.py` to translate image and diagram previews into monochrome 1-bit packed TSPL bitmap streams.
+- **Hardware Compatibility**: Designed for standard 58 mm thermal printers (such as Shreyans POSIFLOW 58D).
+- **USB & CUPS Fallback**: Supports direct character-device output to `/dev/usb/lp0` with automatic fallback to CUPS raw print queues.
+- **API Dispatcher**: Added `POST /api/print` in `app/routers.py` to accept Base64 images, validate dimensions, and dispatch physical print jobs directly from the React UI.
+
+#### 📊 Study Flashcard & Technical Diagram Generation
+- Generates structured educational flashcards, revision cards, and technical diagrams.
+- Automatically generates high-contrast, thermal-dithered output files stored in `diagram_images/` and served via `/generated-images`.
+
+---
+
+### 2. Architecture & Data Flow
+
+```text
+[Mobile Phone / Desktop Browser]
+       │  (HTTPS on Port 5173 - Audio & User Input)
+       ▼
+[Vite Frontend Server]  (Proxy: /study, /voice, /api, /generated-images)
+       │  (Internal Local Forwarding)
+       ▼
+[FastAPI Backend Server]  (Port 8000)
+       ├── Speech Service (faster-whisper STT)
+       ├── Study & Diagram Engines (AI generation)
+       └── Printer Service (TSPL 1-bit monochrome encoder)
+              │
+              ▼
+    [58 mm Thermal Printer]  (/dev/usb/lp0 or CUPS)
+```
+
+---
+
+### 3. How to Run & Operate PrintSensei
+
+#### Prerequisites
+- Python 3.10+ with active virtual environment (`venv`).
+- Node.js (v18+) and `npm`.
+
+#### Step 1: Start the Backend Server
+From the project root:
+```bash
+# Activate virtual environment
+venv\Scripts\activate      # On Windows
+# or source venv/bin/activate on Linux / macOS / Raspberry Pi
+
+# Run FastAPI with uvicorn listening on all network interfaces
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+#### Step 2: Start the Frontend Dev Server
+In a separate terminal:
+```bash
+cd frontend
+npm run dev
+```
+Vite will output two URLs:
+- **Local**: `https://localhost:5173/`
+- **Network**: `https://<YOUR_PC_IP>:5173/` (e.g., `https://192.168.1.29:5173/`)
+
+---
+
+### 4. How to Connect from a Mobile Device
+
+1. **Connect to Same Wi-Fi**: Ensure both your PC and mobile device are connected to the same Wi-Fi network.
+2. **Open Mobile Browser**: In mobile Chrome or Safari, navigate to your Network URL (e.g., `https://192.168.1.29:5173`).
+3. **Accept Self-Signed Certificate**:
+   - **Chrome (Android)**: Tap **"Advanced"** &rarr; **"Proceed to [IP] (unsafe)"**.
+   - **Safari (iOS)**: Tap **"Show Details"** &rarr; **"visit this website"** and confirm.
+4. **Grant Microphone Permission**: Tap the microphone recording button; the browser will prompt for microphone permission. Once allowed, you can record and transmit voice prompts directly from your phone to the system.
+
+---
+
+### 5. Troubleshooting & Tips
+
+- **Microphone Access Denied**: Ensure you accessed the frontend using `https://` instead of `http://`. Browsers disable WebRTC and audio recording on insecure non-localhost origins.
+- **Connection Refused / Timeout on Phone**:
+  - Check that Windows Defender Firewall allows incoming connections on port `5173` and `8000`.
+  - Ensure your network profile in Windows Settings is set to **Private network**.
+- **Printer Offline / Mock Mode**: On non-Linux/PC environments, the printer simulator logs print commands without erroring, allowing full workflow testing without physical hardware attached.
 
 ---
 
@@ -983,4 +1072,3 @@ PrintSensei extends existing multimodal AI assistant concepts by introducing aut
 This repository is intended for academic and educational use.
 
 A suitable open-source license will be added as the project progresses.
->>>>>>> e7dbc32b15474074688995618f207ca5325c39fc

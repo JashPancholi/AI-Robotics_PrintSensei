@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "vite": "latest"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.3.0"
+  }
 }
