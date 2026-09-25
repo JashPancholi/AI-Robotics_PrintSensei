@@ -19,4 +19,7 @@ faster-whisper>=1.1.0
 # QR and image rendering
 qrcode[pil]>=8.0
 Pillow>=10.0.0
+
+# Test suite
+pytest>=8.0.0
 # test
